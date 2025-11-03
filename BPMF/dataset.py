@@ -4243,6 +4243,7 @@ class EventGroup(Family):
         expl_var=0.4,
         max_singular_values=5,
         wiener_filter_colsize=None,
+        verbose=1,
     ):
         """
         Apply Singular Value Decomposition Waveform Filtering (SVDWF) and stack the waveforms.
@@ -4284,7 +4285,7 @@ class EventGroup(Family):
                     sampling_rate=sampling_rate,
                     wiener_filter_colsize=wiener_filter_colsize,
                 )
-                if np.sum(filtered_data[:, s, c, :]) == 0:
+                if (verbose > 0) and (np.sum(filtered_data[:, s, c, :]) == 0):
                     print(
                         "Problem with station {} ({:d}), component {} ({:d})".format(
                             self.stations[s], s, self.components[c], c
