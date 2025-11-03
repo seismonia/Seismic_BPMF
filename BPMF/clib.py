@@ -48,6 +48,21 @@ if cpu_loaded:
         C.POINTER(C.c_int),  # output pointer: redundant sources
     ]
 
+    _libc.find_similar_moveouts2.argtypes = [
+        C.POINTER(C.c_float),  # moveouts
+        C.POINTER(C.c_float),  # source_longitude
+        C.POINTER(C.c_float),  # source_latitude
+        C.POINTER(C.c_float),  # cell_longitude
+        C.POINTER(C.c_float),  # cell_latitude
+        C.c_float,  # rms time difference threshold
+        C.c_size_t,  # number of grid points
+        C.c_size_t,  # number of stations
+        C.c_size_t,  # number of cells in longitude
+        C.c_size_t,  # number of cells in latitude
+        C.c_size_t,  # number of stations for diff
+        C.c_int, # num threads
+        C.POINTER(C.c_int),  # output pointer: redundant sources
+    ]
 
     _libc.select_cc_indexes.argtypes = [
         C.POINTER(C.c_float),  # CCs
@@ -95,20 +110,44 @@ def find_similar_sources(
         threshold,
         num_threads=None,
         num_stations_for_diff=None,
+        method="closest"
         ):
     """
     Find sources with similar moveouts so that users can discard
-    some of them during the computation of the network response,
+    some of them during the computation of the network response
     and thus speedup the process.
 
     Parameters
     -------------
-    moveouts: (n_sources, n_stations) float numpy.ndarray
-        The moveouts in seconds. Note: It makes more sense to input the moveouts
-        rather than the absolute travel times here.
-    threshold: scalar float
+    moveouts : numpy.ndarray
+        The (n_sources, n_stations) moveout 2-D array, in seconds.
+        Note: It makes more sense to give the relative travel times (w.r.t. earliest arrival)
+        rather than the absolute travel times.
+    source_longitude : array_like
+        The (n_sources,) list or 1-D array of source longitudes.
+    source_latitude : array_like
+        The (n_sources,) list or 1-D array of source latitudes.
+    cell_longitude : array_like
+        The (n_cells_longitude,) list or 1-D array of the vortex longitudes
+        defining the geographic cells used to sub-divide the problem.
+    cell_latitude : array_like
+        The (n_cells_latitude,) list or 1-D array of the vortex latitudes
+        defining the geographic cells used to sub-divide the problem.
+    threshold: float
         The station average time difference tolerance to consider
         two sources as being redundant.
+    num_threads : int or None, optional
+        The number of threads over which the computation is parallelized. If None or -1,
+        spaws one thread per available CPU. Defaults to None.
+    num_stations_for_diff : int or None, optional
+        The number of stations over which the sum of the squared differences is computed.
+        See `method` for more info. If None, uses all of the stations. Defaults to None.
+    method : str, optional
+        Either of 'closest' or 'smallest'.
+        - 'closest': Find the `num_stations_for_diff` closest stations to every source
+          in the grid and restrict the sum to those.
+        - 'smallest': Compute the differences at every station but use only the
+          `num_stations_for_diff` smallest differences in the sum.
 
     Returns
     -------------
@@ -133,6 +172,8 @@ def find_similar_sources(
         #num_threads = os.cpu_count()
         num_threads = int(os.environ.get("OMP_NUM_THREADS", os.cpu_count()))
 
+    assert method in {"closest", "smallest"}, "method should be either of 'closest' or 'smallest'"
+
     # format input arrays
     moveouts = np.float32(moveouts.flatten())
     source_longitude = np.float32(source_longitude)
@@ -144,21 +185,39 @@ def find_similar_sources(
     redundant_sources = np.zeros(n_sources, dtype=np.int32)
 
     # call the C function:
-    _libc.find_similar_moveouts(
-        moveouts.ctypes.data_as(C.POINTER(C.c_float)),
-        source_longitude.ctypes.data_as(C.POINTER(C.c_float)),
-        source_latitude.ctypes.data_as(C.POINTER(C.c_float)),
-        cell_longitude.ctypes.data_as(C.POINTER(C.c_float)),
-        cell_latitude.ctypes.data_as(C.POINTER(C.c_float)),
-        np.float32(threshold),
-        int(n_sources),
-        int(n_stations),
-        int(n_cells_longitude),
-        int(n_cells_latitude),
-        int(num_stations_for_diff),
-        int(num_threads),
-        redundant_sources.ctypes.data_as(C.POINTER(C.c_int)),
-    )
+    if method == "closest":
+        _libc.find_similar_moveouts2(
+            moveouts.ctypes.data_as(C.POINTER(C.c_float)),
+            source_longitude.ctypes.data_as(C.POINTER(C.c_float)),
+            source_latitude.ctypes.data_as(C.POINTER(C.c_float)),
+            cell_longitude.ctypes.data_as(C.POINTER(C.c_float)),
+            cell_latitude.ctypes.data_as(C.POINTER(C.c_float)),
+            np.float32(threshold),
+            int(n_sources),
+            int(n_stations),
+            int(n_cells_longitude),
+            int(n_cells_latitude),
+            int(num_stations_for_diff),
+            int(num_threads),
+            redundant_sources.ctypes.data_as(C.POINTER(C.c_int)),
+        )
+    elif method == "smallest":
+        _libc.find_similar_moveouts(
+            moveouts.ctypes.data_as(C.POINTER(C.c_float)),
+            source_longitude.ctypes.data_as(C.POINTER(C.c_float)),
+            source_latitude.ctypes.data_as(C.POINTER(C.c_float)),
+            cell_longitude.ctypes.data_as(C.POINTER(C.c_float)),
+            cell_latitude.ctypes.data_as(C.POINTER(C.c_float)),
+            np.float32(threshold),
+            int(n_sources),
+            int(n_stations),
+            int(n_cells_longitude),
+            int(n_cells_latitude),
+            int(num_stations_for_diff),
+            int(num_threads),
+            redundant_sources.ctypes.data_as(C.POINTER(C.c_int)),
+        )
+
     return redundant_sources.astype(bool)
 
 

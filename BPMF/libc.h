@@ -5,6 +5,7 @@ void find_similar_moveouts(
 void select_cc_indexes(float*, float*, size_t, size_t, int*);
 void swap(float*, float*);
 void selectionSort(float*, int);
+void sort_indexes(const float*, size_t*, size_t);
 void time_dependent_threshold(float*, float*, float, size_t, size_t, size_t, int, float*);
 float _compute_average(float*, size_t);
 float _compute_std(float*, float, size_t);

@@ -130,7 +130,7 @@ void find_similar_moveouts(float *moveouts,
                 if (redundant_sources[n1] == 1) continue;
                 source1_offset = n1 * n_stations;
                 #pragma omp parallel for\
-                private(dt2, threshold, squared_diff)
+                private(dt2, squared_diff) shared(threshold)
                 for (size_t n2=n1+1; n2 < n_sources; n2++){
                     // test whether n2 is in cell
                     if ( (source_longitude[n2] < cell_longitude[i]) ||
@@ -151,18 +151,9 @@ void find_similar_moveouts(float *moveouts,
                                 moveouts[source2_offset + s],
                                 2
                                 );
-                        //printf(
-                        //        "mv 1 is %f, mv 2 if %f, so the diff is %f\n",
-                        //        moveouts[source1_offset + s],
-                        //        moveouts[source2_offset + s],
-                        //        squared_diff[s]
-                        //        );
                     }
                     // sort the squared difference array 
                     selectionSort(squared_diff, n_stations);
-                    //for (size_t s=0; s<n_stations; s++){
-                    //    printf("Squared diff: %f\n", squared_diff[s]);
-                    //}
                     // now, compute dt2 using the n_stations_for_diff
                     // stations with the smallest time differences
                     for (size_t s=0; s < n_stations_for_diff; s++){
@@ -170,7 +161,6 @@ void find_similar_moveouts(float *moveouts,
                         dt2 += squared_diff[s];
                     }
                     // test whether the summed squared difference is below threshold
-                    //if (dt2 < threshold2) redundant_sources[n2] = 1;
                     if (dt2 < threshold2){
                         //printf("Sum %f is smaller than %f\n", dt2, threshold2);
                         redundant_sources[n2] = 1;
@@ -198,7 +188,7 @@ void find_similar_moveouts(float *moveouts,
 
         source1_offset = n1 * n_stations;
         #pragma omp parallel for\
-        private(dt2, threshold, squared_diff)
+        private(dt2, squared_diff) shared(threshold)
         for (size_t n2=n1+1; n2 < n_sources; n2++){
             if (redundant_sources[n2] == 1){
                 // this source has already been identified
@@ -206,14 +196,6 @@ void find_similar_moveouts(float *moveouts,
                 continue;
             }
             source2_offset = n2 * n_stations;
-            //// initialize the cumulative time difference
-            //dt2 = 0.;
-            //for (size_t s=0; s < n_stations; s++){
-            //    dt2 += pow(moveouts[source1_offset + s]
-            //            - moveouts[source2_offset + s], 2);
-            //    if (dt2 > threshold2) break;
-            //}
-            //if (dt2 < threshold2) redundant_sources[n2] = 1;
 
             // initialize sum
             dt2 = 0.;
@@ -237,6 +219,218 @@ void find_similar_moveouts(float *moveouts,
 
 
         }
+    }
+}
+
+void find_similar_moveouts2(float *moveouts,
+                            float *source_longitude,
+                            float *source_latitude,
+                            float *cell_longitude,
+                            float *cell_latitude,
+                            float threshold,
+                            size_t n_sources,
+                            size_t n_stations,
+                            size_t n_cells_longitude,
+                            size_t n_cells_latitude,
+                            size_t n_stations_for_diff,
+                            int num_threads,
+                            int *redundant_sources // output pointer
+                            ){
+
+    /* redundant_sources should be initialized with zeros
+     * threshold is the root mean square time difference in seconds
+     * */
+
+    size_t source1_offset, source2_offset; // pointer offsets
+    float dt2; // cumulative square time difference between two sources
+    float progress_percent = 0.;
+    size_t progress_step = 0;
+    size_t *ordered_indexes = malloc(n_stations * sizeof(size_t));
+    float threshold2 = (float)n_stations_for_diff * pow(threshold, 2);
+    printf(
+            "RMS threshold: %.4f, summed squares threshold: %.4f\n",
+            threshold,
+            threshold2
+            );
+
+    //// --------------------------
+    ////       test sorting (uncomment to double check that the code works)
+    //// --------------------------
+    //size_t n1=0;
+    //size_t n2=1;
+    ////float *moveouts_copy = malloc(n_stations * sizeof(float));
+
+    //printf("Unsorted array:\n");
+    //for (size_t s=0; s < n_stations; s++){
+    //    printf("Element %zu: %.4f ,", s, moveouts[n1 * n_stations + s]);
+    //}
+    //printf("\n");
+    //// copy
+    ////memcpy(moveouts_copy, moveouts + n1 * n_stations, n_stations * sizeof(float));
+
+    ////sort_indexes(moveouts_copy, ordered_indexes, n_stations);
+    //sort_indexes(moveouts + n1 * n_stations, ordered_indexes, n_stations);
+    //printf("Sorted array:\n");
+    //for (size_t s=0; s < n_stations; s++){
+    //    printf("Element %zu: %.4f ,", s, moveouts[n1 * n_stations + ordered_indexes[s]]);
+    //}
+    //printf("\n");
+
+
+    if (num_threads != -1){
+        omp_set_num_threads(num_threads);
+    }
+
+    for(size_t i=0; i < n_cells_longitude; i++){
+        //printf("%d\n", i);
+        printf("---------- %d / %d ----------\n", i+1, n_cells_longitude);
+        for (size_t j=0; j < n_cells_latitude; j++){
+            for (size_t n1=0; n1 < n_sources - 1; n1++){
+                // test whether n1 is in cell
+                if ( (source_longitude[n1] < cell_longitude[i]) ||
+                     (source_longitude[n1] >= cell_longitude[i+1]) ||
+                     (source_latitude[n1] < cell_latitude[j]) ||
+                     (source_latitude[n1] >= cell_latitude[j+1]) ){
+                    continue;
+                }
+                // test whether n1 is already classified as a redundant source
+                if (redundant_sources[n1] == 1) continue;
+                source1_offset = n1 * n_stations;
+
+                // argsort
+                sort_indexes(moveouts + source1_offset, ordered_indexes, n_stations);
+
+                #pragma omp parallel for\
+                private(dt2) shared(threshold, ordered_indexes)
+                for (size_t n2=n1+1; n2 < n_sources; n2++){
+                    // test whether n2 is in cell
+                    if ( (source_longitude[n2] < cell_longitude[i]) ||
+                         (source_longitude[n2] >= cell_longitude[i+1]) ||
+                         (source_latitude[n2] < cell_latitude[j]) ||
+                         (source_latitude[n2] >= cell_latitude[j+1]) ){
+                        continue;
+                    }
+                    // test whether n2 is already classified as a redundant source
+                    if (redundant_sources[n2] == 1) continue;
+                    source2_offset = n2 * n_stations;
+                    // initialize sum
+                    dt2 = 0.;
+                    // sum the squares of the differences over the
+                    // n_stations_for_diff stations closest to source n1
+                    for (size_t s=0; s < n_stations_for_diff; s++){
+                        //printf("ss is %f\n", squared_diff[s]);
+                        dt2 += pow(
+                                moveouts[source1_offset + ordered_indexes[s]]
+                                - moveouts[source2_offset + ordered_indexes[s]],
+                                2
+                                );
+                    }
+                    // test whether the summed squared difference is below threshold
+                    if (dt2 < threshold2){
+                        redundant_sources[n2] = 1;
+                    }
+
+                }
+            }
+        }
+    }
+
+    printf("Second loop\n");
+    for (size_t n1=0; n1 < n_sources-1; n1++){
+        if (redundant_sources[n1] == 1){
+            // pass to the next source if this source
+            // has already been identified as redundant
+            continue;
+        }
+
+        // some kind of progress bar
+        if (n1+1 >= progress_step){
+            printf("Progress: %.0f%%\n", 100.*progress_percent);
+            progress_percent += 0.1;
+            progress_step = (int)(progress_percent*n_sources);
+        }
+
+        source1_offset = n1 * n_stations;
+
+        // argsort
+        sort_indexes(moveouts + source1_offset, ordered_indexes, n_stations);
+
+        #pragma omp parallel for\
+        private(dt2) shared(threshold, ordered_indexes)
+        for (size_t n2=n1+1; n2 < n_sources; n2++){
+            if (redundant_sources[n2] == 1){
+                // this source has already been identified
+                // as redundant with another source, pass
+                continue;
+            }
+            source2_offset = n2 * n_stations;
+
+            // initialize sum
+            dt2 = 0.;
+            // sum the squares of the differences over the
+            // n_stations_for_diff stations closest to source n1
+            for (size_t s=0; s < n_stations_for_diff; s++){
+                //printf("ss is %f\n", squared_diff[s]);
+                dt2 += pow(
+                        moveouts[source1_offset + ordered_indexes[s]]
+                        - moveouts[source2_offset + ordered_indexes[s]],
+                        2
+                        );
+            }
+
+            // test whether the summed squared difference is below threshold
+            if (dt2 < threshold2) redundant_sources[n2] = 1;
+
+
+        }
+    }
+}
+
+//void sort_moveout_indexes(
+//        float* moveouts,
+//        size_t* sorted_indexes,
+//        size_t n_stations
+//        ){
+//    float mv_min = -1.;
+//    size_t idx_min;
+//
+//    for (size_t s1=0; s1 < n_stations - 1; s1++){
+//        idx_min = s1;
+//
+//        // find the next smallest element
+//        for (size_t s2=s1 + 1; s2 < n_stations; s2++){
+//            if (moveouts[s2] < moveouts[idx_min]){
+//                idx_min = s2;
+//            }
+//        }
+//        // store index
+//        sorted_indexes[s1] = idx_min;
+//        // swap the found smallest element with s1
+//        swap(&moveouts[idx_min], &moveouts[s1]);
+//    }
+//}
+
+
+void sort_indexes(
+    const float *moveouts,
+    size_t *sorted_indexes,
+    size_t n_stations
+){
+    // initialize index array
+    for (size_t i = 0; i < n_stations; i++)
+        sorted_indexes[i] = i;
+
+    // simple selection sort — operates on indexes only
+    for (size_t i = 0; i < n_stations - 1; i++) {
+        size_t idx_min = i;
+        for (size_t j = i + 1; j < n_stations; j++) {
+            if (moveouts[sorted_indexes[j]] < moveouts[sorted_indexes[idx_min]])
+                idx_min = j;
+        }
+        // swap the index positions
+        size_t tmp = sorted_indexes[idx_min];
+        sorted_indexes[idx_min] = sorted_indexes[i];
+        sorted_indexes[i] = tmp;
     }
 }
 
