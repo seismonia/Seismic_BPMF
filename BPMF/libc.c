@@ -386,31 +386,6 @@ void find_similar_moveouts2(float *moveouts,
     }
 }
 
-//void sort_moveout_indexes(
-//        float* moveouts,
-//        size_t* sorted_indexes,
-//        size_t n_stations
-//        ){
-//    float mv_min = -1.;
-//    size_t idx_min;
-//
-//    for (size_t s1=0; s1 < n_stations - 1; s1++){
-//        idx_min = s1;
-//
-//        // find the next smallest element
-//        for (size_t s2=s1 + 1; s2 < n_stations; s2++){
-//            if (moveouts[s2] < moveouts[idx_min]){
-//                idx_min = s2;
-//            }
-//        }
-//        // store index
-//        sorted_indexes[s1] = idx_min;
-//        // swap the found smallest element with s1
-//        swap(&moveouts[idx_min], &moveouts[s1]);
-//    }
-//}
-
-
 void sort_indexes(
     const float *moveouts,
     size_t *sorted_indexes,
@@ -476,8 +451,7 @@ void select_cc_indexes(float *cc,
 
 //#pragma omp parallel \
 //    private(i_start) \
-//    firstprivate(search_win, n_corr) \
-//    shared(cc, threshold, selection)
+//    shared(cc, threshold, selection, n_corr, search_win)
     for (size_t i=0; i<n_corr; i++){
         // first test: is it above detection threshold?
         if (cc[i] > threshold[i]){
