@@ -108,7 +108,7 @@ class TravelTimes(object):
             if source_indexes is None:
                 self.source_indexes = np.arange(np.prod(grid_shape))
             else:
-                self.source_indexes = source_indexes
+                self.source_indexes = np.asarray(source_indexes)
             for ph in phases:
                 tts[ph] = {}
                 for sta in fin[f"tt_{ph}"].keys():
@@ -118,12 +118,16 @@ class TravelTimes(object):
                     # flat source indexes
                     if source_indexes is not None:
                         # select a subset of the source grid
-                        source_indexes_unravelled = np.unravel_index(
-                            source_indexes, grid_shape
-                        )
-                        selection = np.zeros(grid_shape, dtype=bool)
-                        selection[source_indexes_unravelled] = True
-                        tts[ph][sta] = fin[f"tt_{ph}"][sta][selection].flatten().astype(
+                        #source_indexes = np.unravel_index(source_indexes, grid_shape)
+                        #source_indexes_unravelled = np.unravel_index(
+                        #    source_indexes, grid_shape
+                        #)
+                        #selection = np.zeros(grid_shape, dtype=bool)
+                        #selection[source_indexes_unravelled] = True
+                        #tts[ph][sta] = fin[f"tt_{ph}"][sta][selection].flatten().astype(
+                        #        "float32"
+                        #        )
+                        tts[ph][sta] = fin[f"tt_{ph}"][sta][...].reshape(-1)[self.source_indexes].astype(
                                 "float32"
                                 )
                     else:
@@ -134,13 +138,16 @@ class TravelTimes(object):
             if read_coords:
                 source_coords = {}
                 if source_indexes is not None:
-                    source_indexes_unravelled = np.unravel_index(source_indexes, grid_shape)
-                    selection = np.zeros(grid_shape, dtype=bool)
-                    selection[source_indexes_unravelled] = True
+                    #source_indexes_unravelled = np.unravel_index(source_indexes, grid_shape)
+                    #selection = np.zeros(grid_shape, dtype=bool)
+                    #selection[source_indexes_unravelled] = True
                     for coord in fin["source_coordinates"].keys():
+                        #source_coords[coord] = fin[
+                        #        "source_coordinates"
+                        #        ][coord][selection].flatten()
                         source_coords[coord] = fin[
                                 "source_coordinates"
-                                ][coord][selection].flatten()
+                                ][coord][...].reshape(-1)[self.source_indexes]
                 else:
                     for coord in fin["source_coordinates"].keys():
                         source_coords[coord] = fin["source_coordinates"][coord][()].flatten()

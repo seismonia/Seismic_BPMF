@@ -403,7 +403,10 @@ def initialize_map(
         # print('Add coast lines.')
         map_axis.add_feature(
             ctp.feature.GSHHSFeature(
-                scale="full", levels=kwargs.get("coastline_levels", [1, 2]), zorder=0.49
+                scale="full",
+                levels=kwargs.get("coastline_levels", [1, 2]),
+                lw=kwargs.get("coastline_lw", 0.75),
+                zorder=0.49
             )
         )  # , rasterized=True))
     # comment this to save time on plotting high-resolution oceans
@@ -485,6 +488,7 @@ def add_scale_bar(
     """
     from cartopy.geodesic import Geodesic
     from cartopy.crs import PlateCarree
+    from matplotlib.patheffects import withStroke
 
     G = Geodesic()
 
@@ -523,7 +527,14 @@ def add_scale_bar(
     else:
         print("`orientation` should be 'longitudinal' or 'latitudinal'.")
         return
-    ax.plot([lon_start, lon_end], [lat_start, lat_end], transform=data_coords, **kwargs)
+    ax.plot(
+            [lon_start, lon_end], [lat_start, lat_end],
+            transform=data_coords,
+            path_effects=[
+                withStroke(linewidth=5, foreground="w")
+                ],
+            **kwargs
+            )
     ax.text(
         (lon_start + lon_end) / 2.0,
         (lat_start + lat_end) / 2.0 - 0.001,
@@ -531,6 +542,9 @@ def add_scale_bar(
         transform=data_coords,
         ha="center",
         va="top",
+        path_effects=[
+            withStroke(linewidth=3, foreground="w")
+            ],
     )
     return
 
